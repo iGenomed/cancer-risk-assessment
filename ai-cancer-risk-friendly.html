@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI防癌风险评估 · 用户友好版</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            background-color: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #1e56a0;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .question-box {
+            margin-bottom: 25px;
+            padding: 18px;
+            background-color: #f8fbff;
+            border-left: 4px solid #4a90e2;
+            border-radius: 8px;
+        }
+        .question-text {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #222;
+        }
+        .hint {
+            font-size: 13px;
+            color: #777;
+            margin-top: 8px;
+            font-style: italic;
+        }
+        .options { margin-top: 12px; }
+        .option-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+        input[type="radio"], input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 6px;
+            margin-left: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .btn-group {
+            margin-top: 25px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        #nextBtn {
+            background-color: #1e56a0;
+            color: white;
+        }
+        #nextBtn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #resetBtn {
+            background-color: #6c757d;
+            color: white;
+        }
+        #exportBtn {
+            background-color: #28a745;
+            color: white;
+        }
+        .report {
+            background-color: #f0fff4;
+            border: 1px solid #90ee90;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .hidden { display: none; }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            height: 12px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(to right, #4caf50, #8bc34a);
+            border-radius: 6px;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+        @media print {
+            body * { visibility: hidden; }
+            .report, .report * { visibility: visible; }
+            .report {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+                box-sizing: border-box;
+                background: white !important;
+                box-shadow: none !important;
+            }
+            .btn-group { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI防癌风险评估</h1>
+        <p class="subtitle">根据《健康体检机构防癌体检指南2025版》 · 共29题 · 约需5分钟</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div id="questionArea"></div>
+        <div id="reportArea" class="hidden"></div>
+    </div>
+
+    <script>
+        let answers = {};
+        let currentQIndex = 0;
+
+        // 用户友好版问题定义（含说明）
+        const allQuestions = [
+            {
+                id: 'gender',
+                text: '您的性别是？',
+                type: 'single',
+                options: ['男', '女'],
+                hint: '请选择与身份证一致的性别'
+            },
+            {
+                id: 'age',
+                text: '您今年多大年纪？',
+                type: 'single',
+                options: ['不到40岁', '40～49岁', '50～59岁', '60～69岁', '70岁及以上'],
+                hint: '癌症筛查建议通常从40岁起加强'
+            },
+            {
+                id: 'residence',
+                text: '您目前主要住在哪种地方？',
+                type: 'single',
+                options: ['大城市（如北上广深）', '普通城市', '县城或乡镇', '农村'],
+                hint: '不同地区饮食、环境暴露差异较大'
+            },
+            {
+                id: 'smoking_status',
+                text: '您吸烟的情况是？',
+                type: 'single',
+                options: ['从不吸烟', '以前吸过，但已戒烟超过5年', '最近5年内戒烟', '现在还在吸烟'],
+                hint: '包括电子烟、雪茄等；每天哪怕只吸几口也算“现在吸烟”'
+            },
+            {
+                id: 'drinking',
+                text: '您平时喝酒吗？',
+                type: 'single',
+                options: ['几乎不喝', '偶尔喝（如聚会、节日）', '经常喝（每周≥2次）', '几乎每天喝'],
+                hint: '包括白酒、啤酒、红酒、黄酒等'
+            },
+            {
+                id: 'bmi',
+                text: '根据您的身高和体重，您觉得自己体型如何？',
+                type: 'single',
+                options: ['偏瘦', '正常', '有点胖', '明显肥胖'],
+                hint: '偏瘦：衣服总是宽松；肥胖：肚子突出、裤子变紧、爬楼喘'
+            },
+            {
+                id: 'exercise',
+                text: '您每周会进行快走、慢跑、骑车等中等强度运动吗？',
+                type: 'single',
+                options: ['基本不动', '每周少于2.5小时', '每周2.5小时以上（约150分钟）'],
+                hint: '中等强度：运动时微微出汗、能说话但不能唱歌'
+            },
+            {
+                id: 'diet',
+                text: '您的日常饮食习惯更接近哪一种？（可多选）',
+                type: 'multi',
+                options: [
+                    '常吃咸菜、腊肉、熏鱼等腌制或熏制食品',
+                    '红肉（猪牛羊）或加工肉（香肠、火腿）吃得比较多',
+                    '蔬菜水果吃得比较少',
+                    '饮食比较均衡，荤素搭配'
+                ],
+                hint: '腌制食品可能含亚硝酸盐，与胃癌风险相关'
+            },
+            {
+                id: 'exposure',
+                text: '过去10年，您是否长期接触以下物质？（可多选）',
+                type: 'multi',
+                options: [
+                    '农药、油漆、化学溶剂等有毒化学品',
+                    '放射线（如医疗、工业岗位）',
+                    '空气污染严重区域（如工厂附近）',
+                    '没有上述情况'
+                ],
+                hint: '“长期”指每周接触≥3天，持续1年以上'
+            },
+            {
+                id: 'infection',
+                text: '您是否被医生诊断过以下感染？（可多选）',
+                type: 'multi',
+                options: [
+                    '乙肝病毒（HBV）',
+                    '丙肝病毒（HCV）',
+                    '人乳头瘤病毒（HPV，如宫颈病变）',
+                    '幽门螺杆菌（一种胃部细菌）',
+                    '从未感染过以上病毒/细菌'
+                ],
+                hint: '幽门螺杆菌可通过呼气试验或胃镜检出'
+            },
+            {
+                id: 'family_cancer',
+                text: '您的父母、兄弟姐妹或子女中，是否有人得过以下癌症？（可多选）',
+                type: 'multi',
+                options: [
+                    '乳腺癌',
+                    '卵巢癌',
+                    '结直肠癌（大肠癌）',
+                    '胃癌',
+                    '肺癌',
+                    '肝癌',
+                    '家里没人得过这些癌'
+                ],
+                hint: '直系亲属患癌是重要风险信号'
+            },
+            {
+                id: 'personal_history',
+                text: '您本人是否有以下病史？（可多选）',
+                type: 'multi',
+                options: [
+                    '慢性萎缩性胃炎或胃溃疡',
+                    '溃疡性结肠炎、克罗恩病等肠道炎症',
+                    '乳腺增生、纤维腺瘤等良性乳腺病',
+                    '肺部有磨玻璃结节或实性结节',
+                    '没有上述情况'
+                ],
+                hint: '某些良性病变可能增加癌变风险'
+            },
+
+            // === 厨房油烟 ===
+            {
+                id: 'kitchen_smoke',
+                text: '您在厨房做饭时，油烟大吗？',
+                type: 'single',
+                options: ['基本无油烟（用抽油烟机且通风好）', '有点油烟但不大', '油烟比较大', '油烟很重，经常呛人'],
+                hint: '尤其对不吸烟的女性，长期油烟暴露是肺癌风险因素'
+            },
+            {
+                id: 'cook_often',
+                text: '您平时会自己做饭吗？',
+                type: 'single',
+                options: ['很少做（每周<2次）', '经常会做（每周≥2次）'],
+                hint: '包括炒菜、煎炸等产生油烟的烹饪方式'
+            },
+            {
+                id: 'cook_years',
+                text: '您累计做饭多少年了？',
+                type: 'number',
+                condition: () => answers.cook_often === '经常会做（每周≥2次）',
+                hint: '例如：从30岁做到60岁，就是30年'
+            },
+            {
+                id: 'cook_weekly',
+                text: '最近一年，平均每周做饭几次？',
+                type: 'number',
+                condition: () => answers.cook_often === '经常会做（每周≥2次）',
+                hint: '只需填写数字，如“5”'
+            },
+
+            // === 女性专属问题 ===
+            {
+                id: 'menarche_age',
+                text: '您第一次来月经是几岁？',
+                type: 'number',
+                condition: () => answers.gender === '女',
+                hint: '一般在10～16岁之间'
+            },
+            {
+                id: 'menstrual_cycle',
+                text: '您月经周期一般是多少天？',
+                type: 'number',
+                condition: () => answers.gender === '女' && answers.menopause !== '已经停经',
+                hint: '从这次月经第一天到下次月经第一天，通常21～35天'
+            },
+            {
+                id: 'menopause',
+                text: '您现在月经还正常吗？',
+                type: 'single',
+                options: ['还在来月经', '已经停经（超过1年没来）'],
+                condition: () => answers.gender === '女',
+                hint: '自然绝经通常在45～55岁'
+            },
+            {
+                id: 'menopause_age',
+                text: '您停经时是几岁？',
+                type: 'number',
+                condition: () => answers.gender === '女' && answers.menopause === '已经停经',
+                hint: '若因手术切除子宫，请填手术年龄'
+            },
+            {
+                id: 'live_birth',
+                text: '您是否生过孩子（包括顺产或剖宫产）？',
+                type: 'single',
+                options: ['没有生过', '生过'],
+                condition: () => answers.gender === '女',
+                hint: '只要孩子出生时是活的就算'
+            },
+            {
+                id: 'first_birth_age',
+                text: '您第一次生孩子是几岁？',
+                type: 'number',
+                condition: () => answers.gender === '女' && answers.live_birth === '生过',
+                hint: '若多次生育，请填第一次的年龄'
+            },
+            {
+                id: 'breastfeed',
+                text: '您生完孩子后是否母乳喂养过？',
+                type: 'single',
+                options: ['没有哺乳', '哺乳过'],
+                condition: () => answers.gender === '女',
+                hint: '哪怕只喂过几天也算'
+            },
+            {
+                id: 'breastfeed_months',
+                text: '所有孩子加起来，您总共母乳喂养了几个月？',
+                type: 'number',
+                condition: () => answers.gender === '女' && answers.breastfeed === '哺乳过',
+                hint: '例如：两个孩子各喂6个月，共12个月'
+            },
+            {
+                id: 'miscarriage',
+                text: '您是否有过自然流产或人工流产？',
+                type: 'single',
+                options: ['没有', '有过'],
+                condition: () => answers.gender === '女',
+                hint: '包括怀孕早期胎停、药流、人流等'
+            },
+            {
+                id: 'miscarriage_count',
+                text: '总共发生过几次流产？',
+                type: 'number',
+                condition: () => answers.gender === '女' && answers.miscarriage === '有过',
+                hint: '请填写总次数'
+            },
+            {
+                id: 'hrt_use',
+                text: '停经后，您是否使用过雌激素类药物（如更年期激素治疗）？',
+                type: 'single',
+                options: ['没有用过', '用过'],
+                condition: () => answers.gender === '女' && answers.menopause === '已经停经',
+                hint: '常见于缓解潮热、盗汗等症状'
+            },
+            {
+                id: 'hrt_type',
+                text: '您用的是哪种类型？',
+                type: 'single',
+                options: ['只用雌激素', '雌激素+孕激素一起用', '不太清楚'],
+                condition: () => answers.hrt_use === '用过',
+                hint: '单用雌激素可能增加子宫内膜癌风险'
+            },
+            {
+                id: 'hrt_years',
+                text: '总共用了多少年？',
+                type: 'number',
+                condition: () => answers.hrt_use === '用过',
+                hint: '例如：用了3年就停了，填“3”'
+            }
+        ];
+
+        let visibleQuestions = [];
+
+        function getVisibleQuestions() {
+            return allQuestions.filter(q => !q.condition || q.condition());
+        }
+
+        function resetAssessment() {
+            if (currentQIndex > 0) {
+                if (!confirm('确定要重新开始吗？当前进度将丢失。')) return;
+            }
+            answers = {};
+            currentQIndex = 0;
+            document.getElementById('reportArea').classList.add('hidden');
+            renderQuestion();
+        }
+
+        function updateVisibleQuestions() {
+            visibleQuestions = getVisibleQuestions();
+        }
+
+        function renderQuestion() {
+            updateVisibleQuestions();
+            if (currentQIndex >= visibleQuestions.length) {
+                generateReport();
+                return;
+            }
+
+            const q = visibleQuestions[currentQIndex];
+            let html = `<div class="question-box">
+                <div class="question-text">第${currentQIndex + 1}题：${q.text}</div>`;
+
+            if (q.hint) {
+                html += `<div class="hint">${q.hint}</div>`;
+            }
+
+            html += `<div class="options">`;
+
+            if (q.type === 'single') {
+                q.options.forEach((opt, i) => {
+                    const checked = answers[q.id] === opt ? 'checked' : '';
+                    html += `<div class="option-item">
+                        <input type="radio" name="${q.id}" value="${opt}" id="${q.id}_${i}" ${checked}>
+                        <label for="${q.id}_${i}">${opt}</label>
+                    </div>`;
+                });
+            } else if (q.type === 'multi') {
+                q.options.forEach((opt, i) => {
+                    const checked = Array.isArray(answers[q.id]) && answers[q.id].includes(opt) ? 'checked' : '';
+                    html += `<div class="option-item">
+                        <input type="checkbox" name="${q.id}" value="${opt}" id="${q.id}_${i}" ${checked}>
+                        <label for="${q.id}_${i}">${opt}</label>
+                    </div>`;
+                });
+            } else if (q.type === 'number') {
+                const value = answers[q.id] || '';
+                html += `<input type="number" id="${q.id}_input" value="${value}" min="0" placeholder="请输入数字">`;
+            }
+
+            html += `</div></div>`;
+            html += `<div class="btn-group">
+                <button id="nextBtn" onclick="goNext()" disabled>下一步</button>
+                <button id="resetBtn" onclick="resetAssessment()">🔄 重新开始</button>
+            </div>`;
+            document.getElementById('questionArea').innerHTML = html;
+
+            // 绑定事件
+            if (q.type === 'single') {
+                document.querySelectorAll(`input[name="${q.id}"]`).forEach(r => {
+                    r.addEventListener('change', () => enableNext());
+                });
+            } else if (q.type === 'multi') {
+                const cbs = document.querySelectorAll(`input[name="${q.id}"]`);
+                cbs.forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        enableNext(cbs);
+                    });
+                });
+            } else if (q.type === 'number') {
+                const inputEl = document.getElementById(`${q.id}_input`);
+                if (inputEl) {
+                    inputEl.addEventListener('input', enableNext);
+                }
+            }
+
+            updateProgress();
+        }
+
+        function enableNext(checkboxes) {
+            const q = visibleQuestions[currentQIndex];
+            let hasAnswer = false;
+
+            if (q.type === 'single') {
+                hasAnswer = document.querySelector(`input[name="${q.id}"]:checked`) !== null;
+            } else if (q.type === 'multi') {
+                hasAnswer = checkboxes ? Array.from(checkboxes).some(c => c.checked) : true;
+            } else if (q.type === 'number') {
+                const val = document.getElementById(`${q.id}_input`)?.value;
+                hasAnswer = val !== '' && !isNaN(val) && parseInt(val) >= 0;
+            }
+
+            document.getElementById('nextBtn').disabled = !hasAnswer;
+        }
+
+        function goNext() {
+            const q = visibleQuestions[currentQIndex];
+            if (q.type === 'single') {
+                const selected = document.querySelector(`input[name="${q.id}"]:checked`);
+                if (selected) answers[q.id] = selected.value;
+            } else if (q.type === 'multi') {
+                const checked = document.querySelectorAll(`input[name="${q.id}"]:checked`);
+                answers[q.id] = Array.from(checked).map(c => c.value);
+            } else if (q.type === 'number') {
+                const val = document.getElementById(`${q.id}_input`).value;
+                answers[q.id] = parseInt(val) || 0;
+            }
+
+            currentQIndex++;
+            renderQuestion();
+        }
+
+        function updateProgress() {
+            const total = visibleQuestions.length;
+            const percent = total > 0 ? ((currentQIndex) / total) * 100 : 0;
+            document.getElementById('progressFill').style.width = `${percent}%`;
+        }
+
+        function exportToPDF() {
+            alert("即将打开打印窗口。\n\n请在弹出的对话框中选择【另存为 PDF】即可保存报告到电脑。");
+            window.print();
+        }
+
+        function generateReport() {
+            document.getElementById('questionArea').classList.add('hidden');
+            let reportHTML = `
+                <div class="report">
+                    <h2 style="color:#1e56a0; text-align:center;">📊 您的AI癌症风险评估报告</h2>
+                    <p><strong>基本信息：</strong>性别：${answers.gender}，年龄：${answers.age}</p>`;
+
+            let risks = [];
+            let recs = [];
+
+            // 肺癌（含油烟）
+            const highKitchenExposure = 
+                answers.kitchen_smoke === '油烟比较大' || answers.kitchen_smoke === '油烟很重，经常呛人' ||
+                (answers.cook_often === '经常会做（每周≥2次）' && (answers.cook_years >= 10 || answers.cook_weekly >= 5));
+            if (
+                answers.smoking_status === '现在还在吸烟' ||
+                (answers.gender === '女' && highKitchenExposure)
+            ) {
+                risks.push('肺癌：中高风险（特别提醒：厨房油烟是女性非吸烟者的重要风险因素）');
+                recs.push('建议：40岁以上考虑做低剂量胸部CT筛查');
+            }
+
+            // 乳腺癌
+            if (answers.gender === '女') {
+                let breastRisk = 0;
+                if (answers.family_cancer.includes('乳腺癌')) breastRisk += 2;
+                if (answers.menarche_age && answers.menarche_age < 12) breastRisk += 1;
+                if (answers.menopause_age && answers.menopause_age > 55) breastRisk += 1;
+                if (answers.first_birth_age && answers.first_birth_age > 35) breastRisk += 1;
+                if (answers.breastfeed_months && answers.breastfeed_months < 12) breastRisk += 1;
+                if (answers.hrt_use === '用过' && answers.hrt_type === '只用雌激素') breastRisk += 2;
+
+                if (breastRisk >= 2) {
+                    risks.push('乳腺癌：中高风险');
+                    recs.push('建议：40岁起每年做乳腺超声，必要时加钼靶；高风险者考虑MRI');
+                }
+            }
+
+            // 卵巢癌 & 子宫内膜癌
+            if (answers.gender === '女') {
+                if (
+                    answers.family_cancer.includes('卵巢癌') ||
+                    (answers.miscarriage_count >= 2 && answers.live_birth === '没有生过')
+                ) {
+                    risks.push('卵巢癌：中风险');
+                    recs.push('建议：定期妇科B超 + CA125血液检查；有家族史者建议基因检测');
+                }
+
+                if (
+                    answers.hrt_use === '用过' && answers.hrt_type === '只用雌激素'
+                ) {
+                    risks.push('子宫内膜癌：高风险（单用雌激素替代治疗）');
+                    recs.push('建议：每年做妇科B超监测子宫内膜厚度');
+                }
+            }
+
+            // 胃癌
+            if (
+                answers.infection.includes('幽门螺杆菌（一种胃部细菌）') ||
+                answers.diet.some(d => d.includes('腌制') || d.includes('熏制')) ||
+                answers.family_cancer.includes('胃癌') ||
+                (answers.residence === '农村' && answers.diet.some(d => d.includes('腌制')))
+            ) {
+                risks.push('胃癌：中高风险');
+                recs.push('建议：40岁以上做一次胃镜检查，幽门螺杆菌阳性者需根除治疗');
+            }
+
+            // 肝癌
+            if (answers.infection.includes('乙肝病毒（HBV）') || answers.infection.includes('丙肝病毒（HCV）')) {
+                risks.push('肝癌：高风险');
+                recs.push('建议：每6个月查一次甲胎蛋白（AFP）+ 肝脏B超');
+            }
+
+            if (risks.length === 0) {
+                risks.unshift('总体：一般风险人群');
+                recs.push('建议：保持健康生活方式，按常规体检项目筛查即可');
+            } else {
+                risks.unshift('总体：属于癌症中高风险人群');
+            }
+
+            reportHTML += `<h3>🔍 风险评估结果</h3><ul>${risks.map(r => `<li>${r}</li>`).join('')}</ul>`;
+            reportHTML += `<h3>✅ 个性化筛查建议</h3><ul>${recs.map(r => `<li>${r}</li>`).join('')}</ul>`;
+            reportHTML += `<p style="background:#fff8e1; padding:12px; border-radius:6px; margin-top:15px;">
+                <strong>📌 重要提醒：</strong>本报告依据《健康体检机构防癌体检指南2025版》生成，<strong>仅供参考</strong>，不能替代医生面对面诊疗。如有疑问，请咨询专业医疗机构。
+            </p>`;
+            reportHTML += `
+                <div class="btn-group">
+                    <button id="exportBtn" onclick="exportToPDF()">📄 保存为PDF</button>
+                    <button id="resetBtn" onclick="resetAssessment()">🔄 再测一次</button>
+                </div>
+            </div>`;
+
+            document.getElementById('reportArea').innerHTML = reportHTML;
+            document.getElementById('reportArea').classList.remove('hidden');
+        }
+
+        // 启动
+        renderQuestion();
+    </script>
+</body>
+</html>
